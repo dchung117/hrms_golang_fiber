@@ -20,4 +20,7 @@ func main() {
 	app.Post("/employee", db.AddEmployee)
 	app.Put("/employee/:id", db.UpdateEmployee)
 	app.Delete("/employee/:id", db.DeleteEmployee)
+
+	// start server
+	log.Fatal(app.Listen(":3000"))
 }
