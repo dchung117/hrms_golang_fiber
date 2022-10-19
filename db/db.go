@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -66,7 +67,7 @@ func GetEmployee(ctx *fiber.Ctx) error {
 	query := bson.D{{}}
 
 	// find all employees
-	cursor, err := mg.dB.Collection("employees").Find(ctx.Context(), query)
+	cursor, err := mg.Db.Collection("employees").Find(ctx.Context(), query)
 	if err != nil {
 		return ctx.Status(500).SendString(err.Error())
 	}
@@ -89,7 +90,7 @@ func AddEmployee(ctx *fiber.Ctx) error {
 
 	// parse out employee info from body, store in employee
 	if err := ctx.BodyParser(employee); err != nil {
-		return ctx.Status(500).SendString(err.Error())
+		return ctx.Status(400).SendString(err.Error())
 	}
 
 	// intialize employee ID
@@ -113,9 +114,74 @@ func AddEmployee(ctx *fiber.Ctx) error {
 }
 
 func UpdateEmployee(ctx *fiber.Ctx) error {
-	//
+	// get query arg parameters
+	id := ctx.Params("id")
+
+	// convert hexstring to objectID
+	employeeID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return ctx.SendStatus(400)
+	}
+
+	// initialize new employee
+	employee := new(Employee)
+
+	// parse employee info from request body
+	if err := ctx.BodyParser(employee); err != nil {
+		return ctx.Status(400).SendString(err.Error())
+	}
+
+	// find query
+	findQuery := bson.D{{Key: "_id", Value: employeeID}}
+
+	// update query
+	updateQuery := bson.D{
+		{
+			Key: "$set",
+			Value: bson.D{
+				{Key: "name", Value: employee.Name},
+				{Key: "age", Value: employee.Age},
+				{Key: "salary", Value: employee.Salary},
+			},
+		},
+	}
+
+	// find employee w/ ID and update info
+	err = mg.Db.Collection("employees").FindOneAndUpdate(ctx.Context(), findQuery, updateQuery).Err()
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return ctx.SendStatus(400)
+		}
+	}
+
+	// set the employee ID
+	employee.ID = id
+
+	// send updated employee info back to client
+	return ctx.Status(200).JSON(employee)
 }
 
 func DeleteEmployee(ctx *fiber.Ctx) error {
+	// get ID from query arg params
+	id := ctx.Params("id")
 
+	// convert hex string to objectID
+	employeeID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return ctx.Status(400).SendString(err.Error())
+	}
+
+	// find record w/ employee ID and delete
+	query := bson.D{{Key: "_id", Value: employeeID}}
+	deleteResult, err := mg.Db.Collection("employees").DeleteOne(ctx.Context(), query)
+	if err != nil {
+		return ctx.SendStatus(500)
+	}
+
+	// send 404 (not found error) if employee ID not found
+	if deleteResult.DeletedCount < 1 {
+		return ctx.SendStatus(404)
+	}
+
+	return ctx.Status(200).JSON("record deleted.")
 }
